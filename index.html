@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en" id="htmlRoot">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule-Based Bible EPUB Creator</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- PapaParse for parsing CSV files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- JSZip for building EPUB files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen flex flex-col items-center py-10 px-4 transition-colors duration-200">
+
+    <div class="max-w-2xl w-full bg-white dark:bg-slate-900 shadow-xl rounded-2xl p-8 border border-slate-100 dark:border-slate-800 transition-colors duration-200">
+        <!-- Header & Theme Toggle -->
+        <div class="flex justify-between items-start mb-2">
+            <h1 class="text-2xl font-bold text-slate-900 dark:text-white">Schedule-Based Bible EPUB Creator</h1>
+        </div>
+        <p class="text-sm text-slate-600 dark:text-slate-400 mb-6">
+            Select your preferred translation, provide your reading schedule CSV, customize your title, and generate your EPUB file. The resulting file should be compatible with your favorite ereader or an ereader app on your cell phone or computer web browser. Only copyright-free translations are available using this software. Translations are fetched using the HelloAO Free Use Bible API.
+        </p>
+
+        <!-- Configuration & Upload Steps -->
+        <div class="space-y-5">
+            <div>
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">1. Select Bible Translation</label>
+                <select id="translationSelect" class="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <option value="WEB">World English Bible (WEB)</option>
+                    <option value="KJV">King James Version (KJV)</option>
+                    <option value="BSB">Berean Study Bible (BSB)</option>
+                    <option value="WEBBE">World English Bible British Edition (WEBBE)</option>
+                    <option value="FBV">Free Bible Version (FBV)</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">2. Reading Plan Title</label>
+                <input type="text" id="planTitleInput" value="My Custom Bible Reading Plan" class="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">3. Select Reading Schedule CSV</label>
+                
+                <!-- GitHub Repo Checkboxes Container -->
+                <div id="githubCsvContainer" class="mb-3 space-y-2 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">Preconfigured from <a href="https://github.com/gitbible/Bible-Studio/tree/main/CSVs" target="_blank" class="text-indigo-600 dark:text-indigo-400 underline">gitbible/Bible-Studio/CSVs</a></p>
+                        <button type="button" onclick="fetchGitHubCsvFiles()" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer">🔄 Refresh List</button>
+                    </div>
+                    <div id="githubCsvCheckboxList" class="space-y-1.5 text-sm">
+                        <!-- Dynamically populated via GitHub REST API -->
+                        <p class="text-xs text-slate-400 italic">Fetching CSV files from repository...</p>
+                    </div>
+                </div>
+
+                <div class="relative flex py-1 items-center">
+                    <div class="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+                    <span class="flex-shrink mx-4 text-xs text-slate-400 uppercase">Or upload custom</span>
+                    <div class="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+                </div>
+
+                <input type="file" id="csvFile" accept=".csv" class="w-full mt-2 text-sm text-slate-500 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 dark:file:bg-indigo-950/50 file:text-indigo-700 dark:file:text-indigo-300 hover:file:bg-indigo-100 dark:hover:file:bg-indigo-900/50 cursor-pointer">
+            </div>
+
+            <button id="generateBtn" onclick="startGeneration()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 px-4 rounded-lg transition duration-200 cursor-pointer">
+                Generate & Download EPUB
+            </button>
+        </div>
+
+        <!-- Progress Tracking -->
+        <div id="progressContainer" class="hidden mt-6 space-y-2">
+            <div class="flex justify-between text-sm font-medium text-slate-700 dark:text-slate-300">
+                <span id="progressText">Processing...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                <div id="progressBar" class="bg-indigo-600 h-2.5 transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Status Log -->
+        <div id="logBox" class="hidden mt-6 bg-slate-900 text-slate-200 p-4 rounded-lg text-xs font-mono h-40 overflow-y-auto space-y-1 border border-slate-800">
+            <div>System initialized. Ready to generate reading plan.</div>
+        </div>
+    </div>
+
+    <script>
+        function toggleDarkMode() {
+            const html = document.getElementById('htmlRoot');
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.getElementById('htmlRoot').classList.add('dark');
+        }
+
+        const fileInput = document.getElementById('csvFile');
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                document.querySelectorAll('input[name="githubCsvChoice"]').forEach(cb => cb.checked = false);
+            }
+        });
+
+        async function fetchGitHubCsvFiles() {
+            const listContainer = document.getElementById('githubCsvCheckboxList');
+            listContainer.innerHTML = '<p class="text-xs text-slate-400 italic">Updating list from repository folder...</p>';
+
+            try {
+                const response = await fetch('https://api.github.com/repos/gitbible/Bible-Studio/contents/CSVs');
+                if (!response.ok) throw new Error("GitHub API request failed");
+                const files = await response.json();
+                const csvFiles = files.filter(f => f.name.toLowerCase().endsWith('.csv'));
+                
+                listContainer.innerHTML = '';
+                if (csvFiles.length === 0) {
+                    listContainer.innerHTML = '<p class="text-xs text-slate-500 italic">No CSV files found in the /CSVs folder.</p>';
+                    return;
+                }
+
+                csvFiles.forEach((file, index) => {
+                    const label = document.createElement('label');
+                    label.className = "flex items-center space-x-2 cursor-pointer";
+                    // Default check the first CSV item so it's ready immediately
+                    const isChecked = (index === 0) ? 'checked' : '';
+                    label.innerHTML = `
+                        <input type="checkbox" name="githubCsvChoice" value="CSVs/${file.name}" ${isChecked} class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                        <span class="text-slate-700 dark:text-slate-300">${file.name}</span>
+                    `;
+                    listContainer.appendChild(label);
+                });
+
+                document.querySelectorAll('input[name="githubCsvChoice"]').forEach(cb => {
+                    cb.addEventListener('change', (e) => {
+                        if (e.target.checked) {
+                            document.querySelectorAll('input[name="githubCsvChoice"]').forEach(other => {
+                                if (other !== e.target) other.checked = false;
+                            });
+                            fileInput.value = '';
+                        }
+                    });
+                });
+            } catch (err) {
+                console.log("Could not auto-fetch repo file list:", err);
+                listContainer.innerHTML = `
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" name="githubCsvChoice" value="CSVs/Biblica-365.csv" checked class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                        <span class="text-slate-700 dark:text-slate-300">Biblica-365.csv (Fallback)</span>
+                    </label>
+                    <p class="text-xs text-red-500 mt-1">Failed to load live list from GitHub folder. Showing default option.</p>
+                `;
+                
+                document.querySelectorAll('input[name="githubCsvChoice"]').forEach(cb => {
+                    cb.addEventListener('change', (e) => {
+                        if (e.target.checked) {
+                            document.querySelectorAll('input[name="githubCsvChoice"]').forEach(other => {
+                                if (other !== e.target) other.checked = false;
+                            });
+                            fileInput.value = '';
+                        }
+                    });
+                });
+            }
+        }
+
+        fetchGitHubCsvFiles();
+
+        const BOOK_SYNONYMS = {
+            "genesis": "GEN", "gen": "GEN",
+            "exodus": "EXO", "exod": "EXO", "ex": "EXO",
+            "leviticus": "LEV", "lev": "LEV",
+            "numbers": "NUM", "num": "NUM",
+            "deuteronomy": "DEU", "deut": "DEU", "dt": "DEU",
+            "joshua": "JOS", "josh": "JOS",
+            "judges": "JDG", "judg": "JDG", "jdg": "JDG",
+            "ruth": "RUT", "rut": "RUT",
+            "1 samuel": "1SA", "1samuel": "1SA", "1 sam": "1SA", "1sam": "1SA", "i samuel": "1SA",
+            "2 samuel": "2SA", "2samuel": "2SA", "2 sam": "2SA", "2sam": "2SA", "ii samuel": "2SA",
+            "1 kings": "1KI", "1kings": "1KI", "1 kgs": "1KI", "1kgs": "1KI", "i kings": "1KI",
+            "2 kings": "2KI", "2kings": "2KI", "2 kgs": "2KI", "2kgs": "2KI", "ii kings": "2KI",
+            "1 chronicles": "1CH", "1chronicles": "1CH", "1 chr": "1CH", "1chr": "1CH", "i chronicles": "1CH",
+            "2 chronicles": "2CH", "2chronicles": "2CH", "2 chr": "2CH", "2chr": "2CH", "ii chronicles": "2CH",
+            "ezra": "EZR", "ezr": "EZR",
+            "nehemiah": "NEH", "neh": "NEH",
+            "esther": "EST", "esth": "EST",
+            "job": "JOB",
+            "psalms": "PSA", "psalm": "PSA", "ps": "PSA", "pss": "PSA",
+            "proverbs": "PRO", "prov": "PRO", "pr": "PRO",
+            "ecclesiastes": "ECC", "eccl": "ECC", "ec": "ECC",
+            "song of solomon": "SNG", "song of songs": "SNG", "sos": "SNG", "song": "SNG",
+            "isaiah": "ISA", "isa": "ISA",
+            "jeremiah": "JER", "jer": "JER",
+            "lamentations": "LAM", "lam": "LAM",
+            "ezekiel": "EZK", "ezek": "EZK",
+            "daniel": "DAN", "dan": "DAN",
+            "hosea": "HOS", "hos": "HOS",
+            "joel": "JOL", "jol": "JOL",
+            "amos": "AMO", "amo": "AMO",
+            "obadiah": "OBA", "obad": "OBA",
+            "jonah": "JON", "jon": "JON",
+            "micah": "MIC", "mic": "MIC",
+            "nahum": "NAM", "nah": "NAM",
+            "habakkuk": "HAB", "hab": "HAB",
+            "zephaniah": "ZEP", "zeph": "ZEP",
+            "haggai": "HAG", "hag": "HAG",
+            "zechariah": "ZEC", "zech": "ZEC",
+            "malachi": "MAL", "mal": "MAL",
+            "matthew": "MAT", "matt": "MAT", "mt": "MAT",
+            "mark": "MRK", "mrk": "MRK", "mk": "MRK",
+            "luke": "LUK", "luk": "LUK", "lk": "LUK",
+            "john": "JHN", "jhn": "JHN", "jn": "JHN",
+            "acts": "ACT", "act": "ACT",
+            "romans": "ROM", "rom": "ROM", "rm": "ROM",
+            "1 corinthians": "1CO", "1corinthians": "1CO", "1 cor": "1CO", "1cor": "1CO", "i corinthians": "1CO",
+            "2 corinthians": "2CO", "2corinthians": "2CO", "2 cor": "2CO", "2cor": "2CO", "ii corinthians": "2CO",
+            "galatians": "GAL", "gal": "GAL",
+            "ephesians": "EPH", "eph": "EPH",
+            "philippians": "PHP", "phil": "PHP", "php": "PHP",
+            "colossians": "COL", "col": "COL",
+            "1 thessalonians": "1TH", "1thessalonians": "1TH", "1 thess": "1TH", "1thess": "1TH", "i thessalonians": "1TH",
+            "2 thessalonians": "2TH", "2thessalonians": "2TH", "2 thess": "2TH", "2thess": "2TH", "ii thessalonians": "2TH",
+            "1 timothy": "1TI", "1timothy": "1TI", "1 tim": "1TI", "1tim": "1TI", "i timothy": "1TI",
+            "2 timothy": "2TI", "2timothy": "2TI", "2 tim": "2TI", "2tim": "2TI", "ii timothy": "2TI",
+            "titus": "TIT", "tit": "TIT",
+            "philemon": "PHM", "phlm": "PHM", "phm": "PHM",
+            "hebrews": "HEB", "heb": "HEB",
+            "james": "JAS", "jas": "JAS", "jam": "JAS",
+            "1 peter": "1PE", "1peter": "1PE", "1 pet": "1PE", "1pet": "1PE", "i peter": "1PE",
+            "2 peter": "2PE", "2peter": "2PE", "2 pet": "2PE", "2pet": "2PE", "ii peter": "2PE",
+            "1john": "1JN", "1 jn": "1JN", "1jn": "1JN", "i john": "1JN", "1 john": "1JN",
+            "2john": "2JN", "2 jn": "2JN", "2jn": "2JN", "ii john": "2JN", "2 john": "2JN",
+            "3john": "3JN", "3 jn": "3JN", "3jn": "3JN", "iii john": "3JN", "3 john": "3JN",
+            "jude": "JUD", "jud": "JUD",
+            "revelation": "REV", "rev": "REV", "apocalypse": "REV"
+        };
+
+        // In-memory cache for chapters fetched from CDN to prevent redundant network requests and avoid Cloudflare blocks
+        const chapterCache = {};
+
+        function logMessage(msg) {
+            const box = document.getElementById('logBox');
+            box.classList.remove('hidden');
+            box.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function updateProgress(percent, text) {
+            document.getElementById('progressContainer').classList.remove('hidden');
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressPercent').textContent = percent + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+
+        // Safe fetch wrapper implementing batching delays and caching to bypass Cloudflare rate limits on direct API requests[cite: 3]
+        async function fetchChapterFromApi(translation, bookId, chapterNum) {
+            const cacheKey = `${translation}_${bookId}_${chapterNum}`;
+            if (chapterCache[cacheKey]) {
+                return chapterCache[cacheKey];
+            }
+
+            // HelloAO direct CDN JSON URL structure
+            const url = `https://bible.helloao.org/api/${translation}/${bookId}/${chapterNum}.json`;
+            
+            // Introduce a small randomized throttling delay (e.g., 50-100ms) between calls to mimic human browsing and prevent Cloudflare trigger walls[cite: 3]
+            await new Promise(resolve => setTimeout(resolve, 60 + Math.random() * 40));
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch chapter ${bookId} ${chapterNum} for ${translation} (HTTP ${response.status})`);
+            }
+
+            const data = await response.json();
+            chapterCache[cacheKey] = data;
+            return data;
+        }
+
+        function parseReadingString(rawStr) {
+            let text = rawStr.trim();
+            let match = text.match(/^((?:[1-3]\s+)?[a-zA-Z\s]+?)\s+(\d+.*)$/);
+            if (!match) return null;
+
+            let bookRaw = match[1].trim().toLowerCase();
+            let spec = match[2].trim();
+
+            let bookId = BOOK_SYNONYMS[bookRaw];
+            if (!bookId) {
+                for (let key in BOOK_SYNONYMS) {
+                    if (bookRaw.startsWith(key) || key.startsWith(bookRaw)) {
+                        bookId = BOOK_SYNONYMS[key];
+                        break;
+                    }
+                }
+            }
+            if (!bookId) return null;
+
+            let parts = spec.split('-');
+            let startPart = parts[0].trim();
+            let endPart = parts.length > 1 ? parts[1].trim() : null;
+
+            let startCh = 1, startVs = 1;
+            if (startPart.includes(':')) {
+                let sp = startPart.split(':');
+                startCh = parseInt(sp[0]);
+                startVs = parseInt(sp[1]);
+            } else {
+                startCh = parseInt(startPart);
+                startVs = 1;
+            }
+
+            let endCh = startCh, endVs = 9999;
+            if (endPart) {
+                if (endPart.includes(':')) {
+                    let ep = endPart.split(':');
+                    endCh = parseInt(ep[0]);
+                    endVs = parseInt(ep[1]);
+                } else {
+                    if (startPart.includes(':')) {
+                        endCh = startCh;
+                        endVs = parseInt(endPart);
+                    } else {
+                        endCh = parseInt(endPart);
+                        endVs = 9999;
+                    }
+                }
+            } else {
+                if (!spec.includes(':')) {
+                    endVs = -1;
+                }
+            }
+
+            return { bookId, startCh, startVs, endCh, endVs, raw: rawStr };
+        }
+
+        function parseMultipleReadings(readingVal) {
+            let rawChunks = readingVal.split(/[,;]/).map(c => c.trim()).filter(Boolean);
+            let results = [];
+            let lastBookId = null;
+
+            for (let chunk of rawChunks) {
+                let parsed = parseReadingString(chunk);
+                if (parsed) {
+                    lastBookId = parsed.bookId;
+                    results.push(parsed);
+                } else if (lastBookId && /^\d+/.test(chunk)) {
+                    let subSpec = chunk;
+                    let parts = subSpec.split('-');
+                    let startPart = parts[0].trim();
+                    let endPart = parts.length > 1 ? parts[1].trim() : null;
+
+                    let startCh = 1, startVs = 1;
+                    if (startPart.includes(':')) {
+                        let sp = startPart.split(':');
+                        startCh = parseInt(sp[0]);
+                        startVs = parseInt(sp[1]);
+                    } else {
+                        startCh = parseInt(startPart);
+                        startVs = 1;
+                    }
+
+                    let endCh = startCh, endVs = 9999;
+                    if (endPart) {
+                        if (endPart.includes(':')) {
+                            let ep = endPart.split(':');
+                            endCh = parseInt(ep[0]);
+                            endVs = parseInt(ep[1]);
+                        } else {
+                            if (startPart.includes(':')) {
+                                endCh = startCh;
+                                endVs = parseInt(endPart);
+                            } else {
+                                endCh = parseInt(endPart);
+                                endVs = 9999;
+                            }
+                        }
+                    } else {
+                        if (!subSpec.includes(':')) {
+                            endVs = -1;
+                        }
+                    }
+
+                    results.push({ bookId: lastBookId, startCh, startVs, endCh, endVs, raw: chunk });
+                }
+            }
+            return results;
+        }
+
+        async function startGeneration() {
+            const translation = document.getElementById('translationSelect').value;
+            let selectedGithubCb = document.querySelector('input[name="githubCsvChoice"]:checked');
+            let hasLocalFile = fileInput.files.length > 0;
+
+            if (!selectedGithubCb && !hasLocalFile) {
+                alert('Please select a preconfigured schedule checkbox from GitHub or upload a schedule CSV file.');
+                return;
+            }
+
+            document.getElementById('generateBtn').setAttribute('disabled', 'true');
+
+            try {
+                let csvText = "";
+                if (selectedGithubCb) {
+                    let filePath = selectedGithubCb.value;
+                    let rawUrl = `https://raw.githubusercontent.com/gitbible/Bible-Studio/main/${filePath}`;
+                    logMessage(`Fetching schedule CSV from GitHub: ${filePath}...`);
+                    updateProgress(5, `Downloading file from GitHub...`);
+                    
+                    let resp = await fetch(rawUrl);
+                    if (!resp.ok) throw new Error(`Failed to fetch file from GitHub (${resp.statusText})`);
+                    csvText = await resp.text();
+                } else {
+                    let file = fileInput.files[0];
+                    logMessage(`Reading local schedule file: ${file.name}...`);
+                    updateProgress(5, `Reading local CSV file...`);
+                    csvText = await file.text();
+                }
+
+                Papa.parse(csvText, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: async function(results) {
+                        try {
+                            await processScheduleAndGenerateEpub(results.data, translation);
+                        } catch (e) {
+                            logMessage("FATAL ERROR: " + e.message);
+                            console.error(e);
+                            alert("Error generating EPUB: " + e.message);
+                            document.getElementById('generateBtn').removeAttribute('disabled');
+                        }
+                    },
+                    error: function(err) {
+                        alert("Error parsing CSV: " + err.message);
+                        document.getElementById('generateBtn').removeAttribute('disabled');
+                    }
+                });
+
+            } catch (fetchErr) {
+                logMessage("ERROR fetching CSV: " + fetchErr.message);
+                alert("Could not load selected schedule CSV: " + fetchErr.message);
+                document.getElementById('generateBtn').removeAttribute('disabled');
+            }
+        }
+
+        async function processScheduleAndGenerateEpub(rows, translation) {
+            logMessage(`Parsing schedule containing ${rows.length} rows for translation [${translation}]...`);
+            updateProgress(10, "Analyzing schedule rows...");
+
+            if (rows.length === 0) throw new Error("CSV file is empty.");
+            const sampleRow = rows[0];
+            const keys = Object.keys(sampleRow);
+            
+            let dayKey = keys.find(k => k.toLowerCase().includes('day') || k.toLowerCase().includes('date')) || keys[0];
+            let readingKey = keys.find(k => k.toLowerCase().includes('read') || k.toLowerCase().includes('passage') || k.toLowerCase().includes('text')) || keys[1] || keys[0];
+
+            let scheduleItems = [];
+            for (let i = 0; i < rows.length; i++) {
+                let row = rows[i];
+                let dayVal = row[dayKey] || `Day ${i+1}`;
+                let readingVal = row[readingKey] || '';
+                
+                scheduleItems.push({
+                    day: dayVal,
+                    readingRaw: readingVal,
+                    parsedList: parseMultipleReadings(readingVal)
+                });
+            }
+
+            updateProgress(15, "Fetching text passages securely from HelloAO API CDN...");
+
+            let chapterHtmlFiles = [];
+            let planTitle = document.getElementById('planTitleInput').value.trim() || "My Custom Bible Reading Plan";
+
+            let titlePageHtml = `
+            <div class="title-page">
+                <h1 class="plan-title">${escapeXml(planTitle)}</h1>
+                <p class="trans-name">Translation: ${escapeXml(translation)}</p>
+                <p class="gen-date">Generated on ${new Date().toLocaleDateString()}</p>
+            </div>`;
+
+            chapterHtmlFiles.push({
+                id: `title_page`,
+                filename: `title_page.xhtml`,
+                title: `Title Page`,
+                content: titlePageHtml
+            });
+
+            for (let i = 0; i < scheduleItems.length; i++) {
+                let item = scheduleItems[i];
+                let percent = Math.floor(15 + (i / scheduleItems.length) * 70);
+                updateProgress(percent, `Processing Day ${item.day}: ${item.readingRaw}`);
+
+                let htmlContent = `<h2>${item.day}</h2>\n<p class="reading-meta"><em>Reading: ${item.readingRaw}</em></p><hr/>\n`;
+
+                if (!item.parsedList || item.parsedList.length === 0) {
+                    htmlContent += `<p class="error">Could not parse reading reference: "${item.readingRaw}". Please check formatting.</p>`;
+                } else {
+                    for (let p of item.parsedList) {
+                        try {
+                            for (let ch = p.startCh; ch <= p.endCh; ch++) {
+                                let chData = await fetchChapterFromApi(translation, p.bookId, ch);
+                                let bookName = chData.book ? chData.book.name : p.bookId;
+                                
+                                htmlContent += `<h3>${bookName} Chapter ${ch}</h3>\n<div class="chapter-text">\n`;
+                                
+                                let verses = chData.chapter ? chData.chapter.content : [];
+                                if (Array.isArray(verses)) {
+                                    verses.forEach(vNode => {
+                                        if (vNode.type === 'verse') {
+                                            let vNum = vNode.number;
+                                            let includeVerse = true;
+                                            if (ch === p.startCh && ch === p.endCh) {
+                                                if (vNum < p.startVs || (p.endVs !== -1 && vNum > p.endVs)) includeVerse = false;
+                                            } else if (ch === p.startCh) {
+                                                if (vNum < p.startVs) includeVerse = false;
+                                            } else if (ch === p.endCh) {
+                                                if (p.endVs !== -1 && vNum > p.endVs) includeVerse = false;
+                                            }
+
+                                            if (includeVerse) {
+                                                htmlContent += `<span class="verse"><sup class="verse-num">${vNum}</sup> `;
+                                                if (Array.isArray(vNode.content)) {
+                                                    vNode.content.forEach(sub => {
+                                                        if (typeof sub === 'string') htmlContent += sub;
+                                                        else if (sub.text) htmlContent += sub.text;
+                                                    });
+                                                }
+                                                htmlContent += ` </span>`;
+                                            }
+                                        } else if (typeof vNode === 'string') {
+                                            htmlContent += vNode;
+                                        } else if (vNode.text) {
+                                            htmlContent += vNode.text;
+                                        }
+                                    });
+                                }
+                                htmlContent += `\n</div>\n`;
+                            }
+                        } catch (apiErr) {
+                            logMessage(`API fetch error for chunk in ${item.readingRaw}: ${apiErr.message}`);
+                            htmlContent += `<p class="error">Error loading text from API: ${apiErr.message}</p>`;
+                        }
+                    }
+                }
+
+                chapterHtmlFiles.push({
+                    id: `day_${i + 1}`,
+                    filename: `day_${i + 1}.xhtml`,
+                    title: `${item.day}: ${item.readingRaw}`,
+                    content: htmlContent
+                });
+            }
+
+            updateProgress(88, "Packaging EPUB container structure...");
+            await generateEpubZip(chapterHtmlFiles, translation, planTitle);
+            
+            updateProgress(100, "EPUB Generated Successfully!");
+            document.getElementById('generateBtn').removeAttribute('disabled');
+            logMessage("EPUB successfully built and downloaded!");
+        }
+
+        async function generateEpubZip(chapters, translationCode, planTitle) {
+            const zip = new JSZip();
+
+            zip.file("mimetype", "application/epub+zip");
+
+            const containerXml = `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles>
+        <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    </rootfiles>
+</container>`;
+            zip.folder("META-INF").file("container.xml", containerXml);
+
+            const oebps = zip.folder("OEBPS");
+
+            const cssContent = `
+body { font-family: Georgia, serif; margin: 5%; line-height: 1.6; color: #111; }
+h2 { text-align: center; color: #333; margin-top: 1em; }
+h3 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 0.3em; margin-top: 1.5em; }
+.reading-meta { text-align: center; color: #666; margin-bottom: 2em; }
+.verse-num { font-size: 70%; vertical-align: super; color: #4f46e5; font-weight: bold; margin-right: 2px; }
+.verse { margin-bottom: 0.2em; display: inline; }
+.error { color: #dc2626; font-weight: bold; }
+hr { border: 0; border-top: 1px solid #eee; margin: 1em 0; }
+.title-page { text-align: center; padding-top: 25vh; }
+.plan-title { font-size: 2.2em; font-weight: bold; color: #1e1b4b; margin-bottom: 0.5em; }
+.trans-name { font-size: 1.2em; color: #4b5563; margin-bottom: 1.5em; }
+.gen-date { font-size: 0.9em; color: #9ca3af; font-style: italic; }
+`;
+            oebps.file("style.css", cssContent);
+
+            let manifestItems = `<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>\n`;
+            manifestItems += `<item id="style" href="style.css" media-type="text/css"/>\n`;
+            
+            let spineItems = ``;
+            let ncxNavPoints = ``;
+
+            chapters.forEach((chap, idx) => {
+                let playOrder = idx + 1;
+                manifestItems += `<item id="${chap.id}" href="${chap.filename}" media-type="application/xhtml+xml"/>\n`;
+                spineItems += `<itemref idref="${chap.id}"/>\n`;
+                
+                ncxNavPoints += `
+    <navPoint id="navPoint-${playOrder}" playOrder="${playOrder}">
+        <navLabel><text>${escapeXml(chap.title)}</text></navLabel>
+        <content src="${chap.filename}"/>
+    </navPoint>`;
+
+                let xhtmlPage = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>${escapeXml(chap.title)}</title>
+    <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+    ${chap.content}
+</body>
+</html>`;
+                oebps.file(chap.filename, xhtmlPage);
+            });
+
+            let tocNcx = `<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+    <head>
+        <meta name="dtb:uid" content="urn:uuid:12345-67890-ABCDF-12345"/>
+        <meta name="dtb:depth" content="1"/>
+        <meta name="dtb:totalPageCount" content="0"/>
+        <meta name="dtb:maxPageNumber" content="0"/>
+    </head>
+    <docTitle><text>${escapeXml(planTitle)}</text></docTitle>
+    <navMap>
+        ${ncxNavPoints}
+    </navMap>
+</ncx>`;
+            oebps.file("toc.ncx", tocNcx);
+
+            let contentOpf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-id="BookId" version="2.0">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+        <dc:title>${escapeXml(planTitle)}</dc:title>
+        <dc:creator opf:role="aut">Generated via HelloAO API</dc:creator>
+        <dc:language>en</dc:language>
+        <dc:identifier id="BookId" opf:scheme="UUID">urn:uuid:${generateUUID()}</dc:identifier>
+    </metadata>
+    <manifest>
+        ${manifestItems}
+    </manifest>
+    <spine toc="ncx">
+        ${spineItems}
+    </spine>
+</package>`;
+            oebps.file("content.opf", contentOpf);
+
+            logMessage("Compiling final EPUB binary package...");
+            const content = await zip.generateAsync({ type: "blob" });
+            
+            const downloadUrl = URL.createObjectURL(content);
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `${planTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_${translationCode}.epub`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(downloadUrl);
+        }
+
+        function escapeXml(str) {
+            return str.replace(/[<>&'"]/g, function (c) {
+                switch (c) {
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '&': return '&amp;';
+                    case '\'': return '&apos;';
+                    case '"': return '&quot;';
+                }
+            });
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+    </script>
+</body>
+</html>
