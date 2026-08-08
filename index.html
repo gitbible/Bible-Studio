@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en" id="htmlRoot">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Schedule-Based Bible Printable & EPUB Creator</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- PapaParse for parsing CSV files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- JSZip for generating EPUB files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</head>
+<body class="bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 min-h-screen flex flex-col items-center py-10 px-4 transition-colors duration-200">
+
+    <div class="max-w-2xl w-full bg-white dark:bg-slate-900 shadow-xl rounded-2xl p-8 border border-slate-100 dark:border-slate-800 transition-colors duration-200">
+        <!-- Header & Theme Toggle -->
+        <div class="flex justify-between items-start mb-2">
+            <h1 class="text-2xl font-bold text-slate-900 dark:text-white">Schedule-Based Bible Creator</h1>
+        </div>
+        <p class="text-sm text-slate-600 dark:text-slate-400 mb-6">
+            Select your preferred translation, customize your title, provide your reading schedule CSV, and generate either a printable document with a 3-inch lined notes column or an EPUB ebook file compatible with your favorite ereader or app. When using your own CSV, please follow the link in the Reading Schedule section to see the correct formatting. Only copyright-free translations are available using this software. Translations are fetched using the HelloAO Free Use Bible API.
+        </p>
+
+        <!-- Configuration & Upload Steps -->
+        <div class="space-y-5">
+            <div>
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">1. Select Bible Translation</label>
+                <select id="translationSelect" class="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <option value="eng_kjv">King James Version (KJV)</option>
+                    <option value="BSB">Berean Study Bible (BSB)</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">2. Reading Plan Title</label>
+                <input type="text" id="planTitleInput" value="My Custom Bible Reading Plan" class="w-full border border-slate-300 dark:border-slate-700 rounded-lg p-2.5 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">3. Select Reading Schedule CSV</label>
+                
+                <!-- GitHub Repo Checkboxes Container -->
+                <div id="githubCsvContainer" class="mb-3 space-y-2 p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="text-xs font-semibold text-slate-600 dark:text-slate-400">Preconfigured from <a href="https://github.com/gitbible/Bible-Studio/tree/main/CSVs" target="_blank" class="text-indigo-600 dark:text-indigo-400 underline">gitbible/Bible-Studio/CSVs</a></p>
+                    </div>
+                    <div id="githubCsvCheckboxList" class="space-y-1.5 text-sm">
+                        <!-- Populated locally via static configuration to avoid API limits -->
+                    </div>
+                </div>
+
+                <div class="relative flex py-1 items-center">
+                    <div class="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+                    <span class="flex-shrink mx-4 text-xs text-slate-400 uppercase">Or upload custom</span>
+                    <div class="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+                </div>
+
+                <input type="file" id="csvFile" accept=".csv" class="w-full mt-2 text-sm text-slate-500 dark:text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 dark:file:bg-indigo-950/50 file:text-indigo-700 dark:file:text-indigo-300 hover:file:bg-indigo-100 dark:hover:file:bg-indigo-900/50 cursor-pointer">
+            </div>
+
+            <div class="flex gap-3 pt-2">
+                <button id="generateBtn" onclick="startGeneration()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 px-4 rounded-lg transition duration-200 cursor-pointer">
+                    Generate Printable View
+                </button>
+                <button id="generateEpubBtn" onclick="startEpubGeneration()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2.5 px-4 rounded-lg transition duration-200 cursor-pointer">
+                    Generate EPUB File
+                </button>
+            </div>
+        </div>
+
+        <!-- Progress Tracking -->
+        <div id="progressContainer" class="hidden mt-6 space-y-2">
+            <div class="flex justify-between text-sm font-medium text-slate-700 dark:text-slate-300">
+                <span id="progressText">Processing...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2.5 overflow-hidden">
+                <div id="progressBar" class="bg-indigo-600 h-2.5 transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Status Log -->
+        <div id="logBox" class="hidden mt-6 bg-slate-900 text-slate-200 p-4 rounded-lg text-xs font-mono h-40 overflow-y-auto space-y-1 border border-slate-800">
+            <div>System initialized. Ready to generate reading plan.</div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('csvFile');
+
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                document.querySelectorAll('input[name="githubCsvChoice"]').forEach(cb => cb.checked = false);
+            }
+        });
+
+        // Static list of CSV files
+        const PRECONFIGURED_CSVS = [
+            "Bible in a Year.csv",
+            "Crono.csv",
+            "Crono_Dual.csv"
+        ];
+
+        function initGitHubCsvCheckboxes() {
+            const listContainer = document.getElementById('githubCsvCheckboxList');
+            listContainer.innerHTML = '';
+
+            PRECONFIGURED_CSVS.forEach((fileName, index) => {
+                const label = document.createElement('label');
+                label.className = "flex items-center space-x-2 cursor-pointer";
+                const isChecked = (index === 0) ? 'checked' : '';
+                label.innerHTML = `
+                    <input type="checkbox" name="githubCsvChoice" value="CSVs/${fileName}" ${isChecked} class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                    <span class="text-slate-700 dark:text-slate-300">${fileName}</span>
+                `;
+                listContainer.appendChild(label);
+            });
+
+            document.querySelectorAll('input[name="githubCsvChoice"]').forEach(cb => {
+                cb.addEventListener('change', (e) => {
+                    if (e.target.checked) {
+                        document.querySelectorAll('input[name="githubCsvChoice"]').forEach(other => {
+                            if (other !== e.target) other.checked = false;
+                        });
+                        fileInput.value = '';
+                    }
+                });
+            });
+        }
+
+        initGitHubCsvCheckboxes();
+
+        const BOOK_SYNONYMS = {
+            "genesis": "GEN", "gen": "GEN",
+            "exodus": "EXO", "exod": "EXO", "ex": "EXO",
+            "leviticus": "LEV", "lev": "LEV",
+            "numbers": "NUM", "num": "NUM",
+            "deuteronomy": "DEU", "deut": "DEU", "dt": "DEU",
+            "joshua": "JOS", "josh": "JOS",
+            "judges": "JDG", "judg": "JDG", "jdg": "JDG",
+            "ruth": "RUT", "rut": "RUT",
+            "1 samuel": "1SA", "1samuel": "1SA", "1 sam": "1SA", "1sam": "1SA", "i samuel": "1SA",
+            "2 samuel": "2SA", "2samuel": "2SA", "2 sam": "2SA", "2sam": "2SA", "ii samuel": "2SA",
+            "1 kings": "1KI", "1kings": "1KI", "1 kgs": "1KI", "1kgs": "1KI", "i kings": "1KI",
+            "2 kings": "2KI", "2kings": "2KI", "2 kgs": "2KI", "2kgs": "2KI", "ii kings": "2KI",
+            "1 chronicles": "1CH", "1chronicles": "1CH", "1 chr": "1CH", "1chr": "1CH", "i chronicles": "1CH",
+            "2 chronicles": "2CH", "2chronicles": "2CH", "2 chr": "2CH", "2chr": "2CH", "ii chronicles": "2CH",
+            "ezra": "EZR", "ezr": "EZR",
+            "nehemiah": "NEH", "neh": "NEH",
+            "esther": "EST", "esth": "EST",
+            "job": "JOB",
+            "psalms": "PSA", "psalm": "PSA", "ps": "PSA", "pss": "PSA",
+            "proverbs": "PRO", "prov": "PRO", "pr": "PRO",
+            "ecclesiastes": "ECC", "eccl": "ECC", "ec": "ECC",
+            "song of solomon": "SNG", "song of songs": "SNG", "sos": "SNG", "song": "SNG",
+            "isaiah": "ISA", "isa": "ISA",
+            "jeremiah": "JER", "jer": "JER",
+            "lamentations": "LAM", "lam": "LAM",
+            "ezekiel": "EZK", "ezek": "EZK",
+            "daniel": "DAN", "dan": "DAN",
+            "hosea": "HOS", "hos": "HOS",
+            "joel": "JOL", "jol": "JOL",
+            "amos": "AMO", "amo": "AMO",
+            "obadiah": "OBA", "obad": "OBA",
+            "jonah": "JON", "jon": "JON",
+            "micah": "MIC", "mic": "MIC",
+            "nahum": "NAM", "nah": "NAM",
+            "habakkuk": "HAB", "hab": "HAB",
+            "zephaniah": "ZEP", "zeph": "ZEP",
+            "haggai": "HAG", "hag": "HAG",
+            "zechariah": "ZEC", "zech": "ZEC",
+            "malachi": "MAL", "mal": "MAL",
+            "matthew": "MAT", "matt": "MAT", "mt": "MAT",
+            "mark": "MRK", "mrk": "MRK", "mk": "MRK",
+            "luke": "LUK", "luk": "LUK", "lk": "LUK",
+            "john": "JHN", "jhn": "JHN", "jn": "JHN",
+            "acts": "ACT", "act": "ACT",
+            "romans": "ROM", "rom": "ROM", "rm": "ROM",
+            "1 corinthians": "1CO", "1corinthians": "1CO", "1 cor": "1CO", "1cor": "1CO", "i corinthians": "1CO",
+            "2 corinthians": "2CO", "2corinthians": "2CO", "2 cor": "2CO", "2cor": "2CO", "ii corinthians": "2CO",
+            "galatians": "GAL", "gal": "GAL",
+            "ephesians": "EPH", "eph": "EPH",
+            "philippians": "PHP", "phil": "PHP", "php": "PHP",
+            "colossians": "COL", "col": "COL",
+            "1 thessalonians": "1TH", "1thessalonians": "1TH", "1 thess": "1TH", "1thess": "1TH", "i thessalonians": "1TH",
+            "2 thessalonians": "2TH", "2thessalonians": "2TH", "2 thess": "2TH", "2thess": "2TH", "ii thessalonians": "2TH",
+            "1 timothy": "1TI", "1timothy": "1TI", "1 tim": "1TI", "1tim": "1TI", "i timothy": "1TI",
+            "2 timothy": "2TI", "2timothy": "2TI", "2 tim": "2TI", "2tim": "2TI", "ii timothy": "2TI",
+            "titus": "TIT", "tit": "TIT",
+            "philemon": "PHM", "phlm": "PHM", "phm": "PHM",
+            "hebrews": "HEB", "heb": "HEB",
+            "james": "JAS", "jas": "JAS", "jam": "JAS",
+            "1 peter": "1PE", "1peter": "1PE", "1 pet": "1PE", "1pet": "1PE", "i peter": "1PE",
+            "2 peter": "2PE", "2peter": "2PE", "2 pet": "2PE", "2pet": "2PE", "ii peter": "2PE",
+            "1john": "1JN", "1 jn": "1JN", "1jn": "1JN", "i john": "1JN", "1 john": "1JN",
+            "2john": "2JN", "2 jn": "2JN", "2jn": "2JN", "ii john": "2JN", "2 john": "2JN",
+            "3john": "3JN", "3 jn": "3JN", "3jn": "3JN", "iii john": "3JN", "3 john": "3JN",
+            "jude": "JUD", "jud": "JUD",
+            "revelation": "REV", "rev": "REV", "apocalypse": "REV"
+        };
+
+        const chapterCache = {};
+
+        function logMessage(msg) {
+            const box = document.getElementById('logBox');
+            box.classList.remove('hidden');
+            box.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function updateProgress(percent, text) {
+            document.getElementById('progressContainer').classList.remove('hidden');
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressPercent').textContent = percent + '%';
+            document.getElementById('progressText').textContent = text;
+        }
+
+        async function fetchChapterFromApi(translation, bookId, chapterNum) {
+            const cacheKey = `${translation}_${bookId}_${chapterNum}`;
+            if (chapterCache[cacheKey]) {
+                return chapterCache[cacheKey];
+            }
+
+            const url = `https://bible.helloao.org/api/${translation}/${bookId}/${chapterNum}.json`;
+            await new Promise(resolve => setTimeout(resolve, 60 + Math.random() * 40));
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch chapter ${bookId} ${chapterNum} for ${translation} (HTTP ${response.status})`);
+            }
+
+            const data = await response.json();
+            chapterCache[cacheKey] = data;
+            return data;
+        }
+
+        function parseReadingString(rawStr) {
+            let text = rawStr.trim();
+            let match = text.match(/^((?:[1-3]\s+)?[a-zA-Z\s]+?)\s+(\d+.*)$/);
+            if (!match) return null;
+
+            let bookRaw = match[1].trim().toLowerCase();
+            let spec = match[2].trim();
+
+            let bookId = BOOK_SYNONYMS[bookRaw];
+            if (!bookId) {
+                for (let key in BOOK_SYNONYMS) {
+                    if (bookRaw.startsWith(key) || key.startsWith(bookRaw)) {
+                        bookId = BOOK_SYNONYMS[key];
+                        break;
+                    }
+                }
+            }
+            if (!bookId) return null;
+
+            let parts = spec.split('-');
+            let startPart = parts[0].trim();
+            let endPart = parts.length > 1 ? parts[1].trim() : null;
+
+            let startCh = 1, startVs = 1;
+            if (startPart.includes(':')) {
+                let sp = startPart.split(':');
+                startCh = parseInt(sp[0]);
+                startVs = parseInt(sp[1]);
+            } else {
+                startCh = parseInt(startPart);
+                startVs = 1;
+            }
+
+            let endCh = startCh, endVs = 9999;
+            if (endPart) {
+                if (endPart.includes(':')) {
+                    let ep = endPart.split(':');
+                    endCh = parseInt(ep[0]);
+                    endVs = parseInt(ep[1]);
+                } else {
+                    if (startPart.includes(':')) {
+                        endCh = startCh;
+                        endVs = parseInt(endPart);
+                    } else {
+                        endCh = parseInt(endPart);
+                        endVs = 9999;
+                    }
+                }
+            } else {
+                if (!spec.includes(':')) {
+                    endVs = -1;
+                }
+            }
+
+            return { bookId, startCh, startVs, endCh, endVs, raw: rawStr };
+        }
+
+        function parseMultipleReadings(readingVal) {
+            let rawChunks = readingVal.split(/[,;]/).map(c => c.trim()).filter(Boolean);
+            let results = [];
+            let lastBookId = null;
+
+            for (let chunk of rawChunks) {
+                let parsed = parseReadingString(chunk);
+                if (parsed) {
+                    lastBookId = parsed.bookId;
+                    results.push(parsed);
+                } else if (lastBookId && /^\d+/.test(chunk)) {
+                    let subSpec = chunk;
+                    let parts = subSpec.split('-');
+                    let startPart = parts[0].trim();
+                    let endPart = parts.length > 1 ? parts[1].trim() : null;
+
+                    let startCh = 1, startVs = 1;
+                    if (startPart.includes(':')) {
+                        let sp = startPart.split(':');
+                        startCh = parseInt(sp[0]);
+                        startVs = parseInt(sp[1]);
+                    } else {
+                        startCh = parseInt(startPart);
+                        startVs = 1;
+                    }
+
+                    let endCh = startCh, endVs = 9999;
+                    if (endPart) {
+                        if (endPart.includes(':')) {
+                            let ep = endPart.split(':');
+                            endCh = parseInt(ep[0]);
+                            endVs = parseInt(ep[1]);
+                        } else {
+                            if (startPart.includes(':')) {
+                                endCh = startCh;
+                                endVs = parseInt(endPart);
+                            } else {
+                                endCh = parseInt(endPart);
+                                endVs = 9999;
+                            }
+                        }
+                    } else {
+                        if (!subSpec.includes(':')) {
+                            endVs = -1;
+                        }
+                    }
+
+                    results.push({ bookId: lastBookId, startCh, startVs, endCh, endVs, raw: chunk });
+                }
+            }
+            return results;
+        }
+
+        async function loadScheduleRows() {
+            let selectedGithubCb = document.querySelector('input[name="githubCsvChoice"]:checked');
+            let hasLocalFile = fileInput.files.length > 0;
+
+            if (!selectedGithubCb && !hasLocalFile) {
+                throw new Error('Please select a preconfigured schedule checkbox from GitHub or upload a schedule CSV file.');
+            }
+
+            let csvText = "";
+            if (selectedGithubCb) {
+                let filePath = selectedGithubCb.value;
+                let rawUrl = `https://raw.githubusercontent.com/gitbible/Bible-Studio/main/${filePath}`;
+                logMessage(`Fetching schedule CSV from GitHub: ${filePath}...`);
+                updateProgress(5, `Downloading file from GitHub...`);
+                
+                let resp = await fetch(rawUrl);
+                if (!resp.ok) throw new Error(`Failed to fetch file from GitHub (${resp.statusText})`);
+                csvText = await resp.text();
+            } else {
+                let file = fileInput.files[0];
+                logMessage(`Reading local schedule file: ${file.name}...`);
+                updateProgress(5, `Reading local CSV file...`);
+                csvText = await file.text();
+            }
+
+            return new Promise((resolve, reject) => {
+                Papa.parse(csvText, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        resolve(results.data);
+                    },
+                    error: function(err) {
+                        reject(new Error("Error parsing CSV: " + err.message));
+                    }
+                });
+            });
+        }
+
+        async function startGeneration() {
+            const translation = document.getElementById('translationSelect').value;
+            document.getElementById('generateBtn').setAttribute('disabled', 'true');
+            document.getElementById('generateEpubBtn').setAttribute('disabled', 'true');
+
+            try {
+                let rows = await loadScheduleRows();
+                await processScheduleAndGeneratePrintable(rows, translation);
+            } catch (e) {
+                logMessage("FATAL ERROR: " + e.message);
+                console.error(e);
+                alert("Error generating printable document: " + e.message);
+            } finally {
+                document.getElementById('generateBtn').removeAttribute('disabled');
+                document.getElementById('generateEpubBtn').removeAttribute('disabled');
+            }
+        }
+
+        async function startEpubGeneration() {
+            const translation = document.getElementById('translationSelect').value;
+            document.getElementById('generateBtn').setAttribute('disabled', 'true');
+            document.getElementById('generateEpubBtn').setAttribute('disabled', 'true');
+
+            try {
+                let rows = await loadScheduleRows();
+                await processScheduleAndGenerateEpub(rows, translation);
+            } catch (e) {
+                logMessage("FATAL ERROR: " + e.message);
+                console.error(e);
+                alert("Error generating EPUB file: " + e.message);
+            } finally {
+                document.getElementById('generateBtn').removeAttribute('disabled');
+                document.getElementById('generateEpubBtn').removeAttribute('disabled');
+            }
+        }
+
+        async function buildScheduleItems(rows) {
+            if (rows.length === 0) throw new Error("CSV file is empty.");
+            const sampleRow = rows[0];
+            const keys = Object.keys(sampleRow);
+            
+            let dayKey = keys.find(k => k.toLowerCase().includes('day') || k.toLowerCase().includes('date')) || keys[0];
+            let readingKey = keys.find(k => k.toLowerCase().includes('read') || k.toLowerCase().includes('passage') || k.toLowerCase().includes('text')) || keys[1] || keys[0];
+
+            let scheduleItems = [];
+            for (let i = 0; i < rows.length; i++) {
+                let row = rows[i];
+                let dayVal = row[dayKey] || `Day ${i+1}`;
+                let readingVal = row[readingKey] || '';
+                
+                scheduleItems.push({
+                    day: dayVal,
+                    readingRaw: readingVal,
+                    parsedList: parseMultipleReadings(readingVal)
+                });
+            }
+            return scheduleItems;
+        }
+
+        async function buildPassageHtmlContent(item, translation) {
+            let htmlContent = `<h2>${escapeXml(item.day)}</h2>\n`;
+            htmlContent += `<p class="reading-meta"><em>Reading: ${escapeXml(item.readingRaw)}</em></p>\n`;
+            htmlContent += `<hr/>\n`;
+
+            if (!item.parsedList || item.parsedList.length === 0) {
+                htmlContent += `<p class="error">Could not parse reading reference: "${escapeXml(item.readingRaw)}". Please check formatting.</p>`;
+            } else {
+                for (let p of item.parsedList) {
+                    try {
+                        for (let ch = p.startCh; ch <= p.endCh; ch++) {
+                            let chData = await fetchChapterFromApi(translation, p.bookId, ch);
+                            let bookName = chData.book ? chData.book.name : p.bookId;
+                            
+                            htmlContent += `<h3>${escapeXml(bookName)} Chapter ${ch}</h3>\n`;
+                            
+                            let verses = chData.chapter ? chData.chapter.content : [];
+                            if (Array.isArray(verses)) {
+                                htmlContent += `<p class="bible-paragraph">`;
+                                
+                                verses.forEach(vNode => {
+                                    if (vNode.type === 'verse') {
+                                        let vNum = vNode.number;
+                                        let includeVerse = true;
+                                        if (ch === p.startCh && ch === p.endCh) {
+                                            if (vNum < p.startVs || (p.endVs !== -1 && vNum > p.endVs)) includeVerse = false;
+                                        } else if (ch === p.startCh) {
+                                            if (vNum < p.startVs) includeVerse = false;
+                                        } else if (ch === p.endCh) {
+                                            if (p.endVs !== -1 && vNum > p.endVs) includeVerse = false;
+                                        }
+
+                                        if (includeVerse) {
+                                            let verseTextBuffer = `<span class="verse"><sup class="verse-num">${vNum}</sup> `;
+                                            if (Array.isArray(vNode.content)) {
+                                                vNode.content.forEach(sub => {
+                                                    let subText = "";
+                                                    if (typeof sub === 'string') subText = sub;
+                                                    else if (sub.text) subText = sub.text;
+
+                                                    if (subText.includes('¶')) {
+                                                        let parts = subText.split('¶');
+                                                        verseTextBuffer += parts[0];
+                                                        verseTextBuffer += ` </span></p>\n<p class="bible-paragraph">`;
+                                                        if (parts[1]) {
+                                                            verseTextBuffer += parts[1];
+                                                        }
+                                                    } else {
+                                                        verseTextBuffer += subText;
+                                                    }
+                                                });
+                                            }
+                                            if (!verseTextBuffer.endsWith('</p>\n<p class="bible-paragraph">')) {
+                                                verseTextBuffer += ` </span>`;
+                                            }
+                                            htmlContent += verseTextBuffer;
+                                        }
+                                    } else if (typeof vNode === 'string') {
+                                        if (vNode.includes('¶')) {
+                                            let parts = vNode.split('¶');
+                                            htmlContent += parts[0] + `</p>\n<p class="bible-paragraph">` + (parts[1] || '');
+                                        } else {
+                                            htmlContent += vNode;
+                                        }
+                                    } else if (vNode.text) {
+                                        if (vNode.text.includes('¶')) {
+                                            let parts = vNode.text.split('¶');
+                                            htmlContent += parts[0] + `</p>\n<p class="bible-paragraph">` + (parts[1] || '');
+                                        } else {
+                                            htmlContent += vNode.text;
+                                        }
+                                    }
+                                });
+                                htmlContent += `</p>\n`;
+                            }
+                        }
+                    } catch (apiErr) {
+                        logMessage(`API fetch error for chunk in ${item.readingRaw}: ${apiErr.message}`);
+                        htmlContent += `<p class="error">Error loading text from API: ${escapeXml(apiErr.message)}</p>`;
+                    }
+                }
+            }
+            return htmlContent;
+        }
+
+        async function processScheduleAndGeneratePrintable(rows, translation) {
+            logMessage(`Parsing schedule containing ${rows.length} rows for printable view [${translation}]...`);
+            updateProgress(10, "Analyzing schedule rows...");
+
+            let scheduleItems = await buildScheduleItems(rows);
+            updateProgress(15, "Fetching text passages securely from HelloAO API CDN...");
+
+            let planTitle = document.getElementById('planTitleInput').value.trim() || "My Custom Bible Reading Plan";
+            let sectionsHtml = [];
+
+            // Title Page Section
+            let titlePageHtml = `
+            <div class="page title-page">
+                <h1 class="plan-title">${escapeXml(planTitle)}</h1>
+                <p class="trans-name">Translation: ${escapeXml(translation)}</p>
+                <p class="gen-date">Generated on ${new Date().toLocaleDateString()}</p>
+            </div>`;
+            sectionsHtml.push(titlePageHtml);
+
+            for (let i = 0; i < scheduleItems.length; i++) {
+                let item = scheduleItems[i];
+                let percent = Math.floor(15 + (i / scheduleItems.length) * 70);
+                updateProgress(percent, `Processing Day ${item.day}: ${item.readingRaw}`);
+
+                let passageInner = await buildPassageHtmlContent(item, translation);
+                let htmlContent = `<div class="page reading-page">
+                    <div class="page-layout">
+                        <div class="scripture-column">
+                            ${passageInner}
+                        </div>
+                        <div class="notes-column">
+                            <div class="notes-header">Notes</div>
+                            <div class="lined-area"></div>
+                        </div>
+                    </div>
+                </div>`;
+                sectionsHtml.push(htmlContent);
+            }
+
+            updateProgress(90, "Assembling printable 8.5x11 document view...");
+            openPrintableWindow(sectionsHtml.join('\n'), planTitle, translation);
+            
+            updateProgress(100, "Printable Document Generated Successfully!");
+            logMessage("Printable document view successfully opened!");
+        }
+
+        async function processScheduleAndGenerateEpub(rows, translation) {
+            logMessage(`Parsing schedule containing ${rows.length} rows for EPUB generation [${translation}]...`);
+            updateProgress(10, "Analyzing schedule rows...");
+
+            let scheduleItems = await buildScheduleItems(rows);
+            updateProgress(15, "Fetching text passages and constructing EPUB structure...");
+
+            let planTitle = document.getElementById('planTitleInput').value.trim() || "My Custom Bible Reading Plan";
+            const zip = new JSZip();
+
+            // 1. mimetype must be first file, uncompressed ("STORE")
+            zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+
+            // 2. META-INF/container.xml
+            const metaInf = zip.folder("META-INF");
+            metaInf.file("container.xml", `<?xml version="1.0"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+    <rootfiles>
+        <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+    </rootfiles>
+</container>`);
+
+            const oebps = zip.folder("OEBPS");
+
+            // 3. Style CSS
+            oebps.file("style.css", `
+body {
+    font-family: serif;
+    font-size: 1em;
+    line-height: 1.5;
+    margin: 1em;
+    color: #111;
+}
+h1.plan-title {
+    text-align: center;
+    font-size: 2em;
+    margin-top: 2em;
+}
+p.trans-name, p.gen-date {
+    text-align: center;
+    color: #555;
+}
+h2 {
+    text-align: center;
+    font-size: 1.4em;
+    margin-top: 1.5em;
+}
+h3 {
+    font-size: 1.1em;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 0.2em;
+    margin-top: 1.2em;
+}
+.reading-meta {
+    text-align: center;
+    font-style: italic;
+    color: #666;
+}
+.verse-num {
+    font-size: 70%;
+    vertical-align: super;
+    font-weight: bold;
+}
+.bible-paragraph {
+    text-indent: 1.2em;
+    text-align: justify;
+    margin-top: 0;
+    margin-bottom: 0.5em;
+}
+.error {
+    color: red;
+    font-weight: bold;
+}
+hr {
+    border: 0;
+    border-top: 1px solid #ddd;
+    margin: 1em 0;
+}
+`);
+
+            let manifestItems = `<item id="style" href="style.css" media-type="text/css"/>\n`;
+            let spineItems = ``;
+            let navPoints = ``;
+
+            // Title Page XHTML
+            let titlePageXhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>${escapeXml(planTitle)}</title>
+    <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+    <h1 class="plan-title">${escapeXml(planTitle)}</h1>
+    <p class="trans-name">Translation: ${escapeXml(translation)}</p>
+    <p class="gen-date">Generated on ${new Date().toLocaleDateString()}</p>
+</body>
+</html>`;
+            oebps.file("title.xhtml", titlePageXhtml);
+            manifestItems += `        <item id="title" href="title.xhtml" media-type="application/xhtml+xml"/>\n`;
+            spineItems += `        <itemref idref="title"/>\n`;
+            navPoints += `        <navPoint id="nav_title" playOrder="1">
+            <navLabel><text>Title Page</text></navLabel>
+            <content src="title.xhtml"/>
+        </navPoint>\n`;
+
+            for (let i = 0; i < scheduleItems.length; i++) {
+                let item = scheduleItems[i];
+                let percent = Math.floor(15 + (i / scheduleItems.length) * 70);
+                updateProgress(percent, `Building EPUB Chapter for Day ${item.day}`);
+
+                let passageInner = await buildPassageHtmlContent(item, translation);
+                let fileName = `chapter_${i + 1}.xhtml`;
+
+                let chapterXhtml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>${escapeXml(item.day)}</title>
+    <link rel="stylesheet" type="text/css" href="style.css"/>
+</head>
+<body>
+    ${passageInner}
+</body>
+</html>`;
+
+                oebps.file(fileName, chapterXhtml);
+                let itemId = `ch_${i + 1}`;
+                manifestItems += `        <item id="${itemId}" href="${fileName}" media-type="application/xhtml+xml"/>\n`;
+                spineItems += `        <itemref idref="${itemId}"/>\n`;
+                navPoints += `        <navPoint id="nav_${i + 1}" playOrder="${i + 2}">
+            <navLabel><text>${escapeXml(item.day)} (${escapeXml(item.readingRaw)})</text></navLabel>
+            <content src="${fileName}"/>
+        </navPoint>\n`;
+            }
+
+            // 4. content.opf
+            let bookUuid = generateUUID();
+            let contentOpf = `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+        <dc:title>${escapeXml(planTitle)}</dc:title>
+        <dc:creator>Schedule-Based Bible Creator</dc:creator>
+        <dc:language>en</dc:language>
+        <dc:identifier id="BookId" opf:scheme="UUID">urn:uuid:${bookUuid}</dc:identifier>
+    </metadata>
+    <manifest>
+        <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
+        ${manifestItems}
+    </manifest>
+    <spine toc="ncx">
+        ${spineItems}
+    </spine>
+</package>`;
+            oebps.file("content.opf", contentOpf);
+
+            // 5. toc.ncx
+            let tocNcx = `<?xml version="1.0" encoding="UTF-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+    <head>
+        <meta name="dtb:uid" content="urn:uuid:${bookUuid}"/>
+        <meta name="dtb:depth" content="1"/>
+        <meta name="dtb:totalPageCount" content="0"/>
+        <meta name="dtb:maxPageIndex" content="0"/>
+    </head>
+    <docTitle>
+        <text>${escapeXml(planTitle)}</text>
+    </docTitle>
+    <navMap>
+        ${navPoints}
+    </navMap>
+</ncx>`;
+            oebps.file("toc.ncx", tocNcx);
+
+            updateProgress(95, "Compiling EPUB archive...");
+            let content = await zip.generateAsync({ type: "blob" });
+            
+            let safeTitle = planTitle.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            let downloadFileName = `${safeTitle}_${translation}.epub`;
+
+            let url = URL.createObjectURL(content);
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = downloadFileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            updateProgress(100, "EPUB File Generated Successfully!");
+            logMessage(`EPUB file [${downloadFileName}] downloaded successfully!`);
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        function openPrintableWindow(contentHtml, planTitle, translationCode) {
+            const printableDoc = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>${escapeXml(planTitle)} - ${escapeXml(translationCode)}</title>
+    <style>
+        @page {
+            size: 8.5in 11in;
+            margin: 0.75in;
+        }
+        body {
+            font-family: "Times New Roman", Times, serif;
+            font-size: 10.5pt;
+            line-height: 1.5;
+            color: #111;
+            background: #fff;
+            margin: 0;
+            padding: 0;
+        }
+        .page {
+            page-break-after: always;
+            break-after: page;
+        }
+        .title-page {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            text-align: center;
+            page-break-after: always;
+            break-after: page;
+        }
+        .plan-title {
+            font-size: 28pt;
+            font-weight: bold;
+            color: #111;
+            margin-bottom: 0.5in;
+        }
+        .trans-name {
+            font-size: 14pt;
+            color: #444;
+            margin-bottom: 0.2in;
+        }
+        .gen-date {
+            font-size: 11pt;
+            color: #666;
+            font-style: italic;
+        }
+        .page-layout {
+            display: flex;
+            gap: 0.25in;
+            box-sizing: border-box;
+            align-items: stretch;
+        }
+        .scripture-column {
+            flex: 1; 
+            box-sizing: border-box;
+        }
+        .notes-column {
+            width: 3in; 
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #cbd5e1;
+            padding-left: 0.2in;
+            box-sizing: border-box;
+        }
+        .notes-header {
+            font-family: sans-serif;
+            font-size: 10pt;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #64748b;
+            margin-bottom: 0.5em;
+            text-align: center;
+        }
+        .lined-area {
+            flex-grow: 1;
+            min-height: 9in;
+            background-image: repeating-linear-gradient(
+                transparent,
+                transparent 27px,
+                #cbd5e1 27px,
+                #cbd5e1 28px
+            );
+            background-size: 100% 28px;
+            border-top: 1px solid #cbd5e1;
+            box-sizing: border-box;
+        }
+        h2 {
+            text-align: center;
+            color: #222;
+            font-size: 16pt;
+            margin-top: 0;
+            margin-bottom: 0.05in;
+        }
+        h3 {
+            color: #444;
+            font-size: 12pt;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 0.15em;
+            margin-top: 1em;
+            margin-bottom: 0.4em;
+        }
+        .reading-meta {
+            text-align: center;
+            color: #555;
+            margin-bottom: 1em;
+            font-size: 10.5pt;
+        }
+        .verse-num {
+            font-size: 70%;
+            vertical-align: super;
+            color: #333;
+            font-weight: bold;
+            margin-right: 2px;
+        }
+        .verse {
+            margin-bottom: 0;
+            display: inline;
+        }
+        .bible-paragraph {
+            text-align: justify;
+            text-indent: 1.2em;
+            margin-top: 0;
+            margin-bottom: 0.4em;
+        }
+        .error {
+            color: #dc2626;
+            font-weight: bold;
+        }
+        hr {
+            border: 0;
+            border-top: 1px solid #ddd;
+            margin: 0.5em 0;
+        }
+        .no-print {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #4f46e5;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-family: sans-serif;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: none;
+            z-index: 1000;
+        }
+        .no-print:hover {
+            background: #4338ca;
+        }
+        @media print {
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="no-print" onclick="window.print()">Print / Save as PDF</button>
+    ${contentHtml}
+</body>
+</html>`;
+
+            const blob = new Blob([printableDoc], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            window.open(url, '_blank');
+        }
+
+        function escapeXml(str) {
+            return str.replace(/[<>&'"]/g, function (c) {
+                switch (c) {
+                    case '<': return '&lt;';
+                    case '>': return '&gt;';
+                    case '&': return '&amp;';
+                    case '\'': return '&apos;';
+                    case '"': return '&quot;';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
